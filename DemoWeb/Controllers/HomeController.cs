@@ -18,6 +18,9 @@ namespace DemoWeb.Controllers
 
         public IActionResult Index()
         {
+            ViewData["Title"] = "Home";
+            ViewBag.Test = "test";
+            ViewData["Message"] = "Welcome to the Demo Web Application!";
             return View();
         }
 

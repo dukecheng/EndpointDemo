@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -6,6 +7,9 @@ using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using System.Reflection;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
+using Microsoft.Extensions.Options;
 
 namespace DemoWeb.Services.DomainEndpoints;
 
@@ -58,8 +62,11 @@ public static class AppleEndpointBuilderExtension
         var serviceProvider = context.RequestServices;
         var controllerActivator = serviceProvider.GetRequiredService<IControllerActivator>();
 
-        var applicatoinPartsManager = serviceProvider.GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
+        var applicatoinPartsManager = serviceProvider
+            .GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
         var routeData = context.GetRouteData();
+        routeData.Values.Add("controller", "Home");
+        routeData.Values.Add("action", "Index");
         var controllerName = routeData.Values["controller"]?.ToString() ?? "Home";
         var actionName = routeData.Values["action"]?.ToString() ?? "Index";
         var controllerType = FindControllerType(controllerName);
@@ -79,7 +86,7 @@ public static class AppleEndpointBuilderExtension
                 MethodInfo = controllerType.GetMethod(actionName),
                 // 可以根据需要设置其他属性
                 Parameters = new List<ParameterDescriptor>(), // 这里可以添加参数描述符
-                                                              // 其他属性...
+                // 其他属性...
             };
 
             // 设置 ActionContext
@@ -100,6 +107,14 @@ public static class AppleEndpointBuilderExtension
                     // 确保结果是有效的
                     if (result is ViewResult viewResult)
                     {
+                        if (viewResult.ViewData == null)
+                            viewResult.ViewData = new ViewDataDictionary(
+                                new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
+                                new Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary());
+                        if (viewResult.TempData == null)
+                            viewResult.TempData = serviceProvider.GetRequiredService<ITempDataDictionaryFactory>()
+                                .GetTempData(context);
+
                         // 使用系统自带的视图查找器查找视图
                         var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
 
@@ -107,20 +122,26 @@ public static class AppleEndpointBuilderExtension
                         var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);
                         if (viewEngineResult.Success)
                         {
-                            var view = viewEngineResult.View;
+                            var view = viewEngineResult.View as Microsoft.AspNetCore.Mvc.Razor.RazorView;
+                            var viewData = new ViewDataDictionary(viewResult.ViewData);
                             // 创建 ViewContext
-                            using var writer = new StreamWriter(context.Response.Body);
-                            // 确保流的位置是正确的
-                            context.Response.Body.Position = 0;
+                            await using var writer = new StreamWriter(context.Response.Body);
+// 读取并设置Layout
+                            // var layout = viewData["Layout"] ?? "_Layout"; // 你可以检查ViewData中是否已有(Layout)或者设置为默认布局
+                            //
+                            // viewData["Layout"] = layout;
+                            //
+                            // view.RazorPage.Layout = layout.ToString();
 
                             var viewContext = new ViewContext(
                                 actionContext,
                                 view,
-                                viewResult.ViewData,
+                                viewData,
                                 viewResult.TempData,
                                 writer,
                                 new HtmlHelperOptions()
                             );
+
 
                             // 渲染视图
                             await view.RenderAsync(viewContext);
@@ -151,17 +172,73 @@ public static class AppleEndpointBuilderExtension
                 // 获取每个 ApplicationPart 的特征
                 var assembly = part.Assembly;
                 var controllerType = assembly.GetTypes()
-                    .FirstOrDefault(t => t.Name.Equals($"{controllerName}Controller", StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(t =>
+                        t.Name.Equals($"{controllerName}Controller", StringComparison.OrdinalIgnoreCase));
                 if (controllerType != null)
                 {
                     return controllerType;
                 }
             }
+
             return null;
         }
     }
 }
 
+// public class CustomViewEngine : IViewEngine
+// {
+//     private const string CustomViewPathFormat = "/Views/{0}/{1}.cshtml"; // {0} 是 Controller Name, {1} 是 View Name
+//
+//     public ViewEngineResult FindView(ActionContext actionContext, string viewName, bool useCachedResult)
+//     {
+//         // 构造自定义视图路径
+//         string controllerName = (actionContext.ActionDescriptor as ControllerActionDescriptor).ControllerName;
+//         string path = string.Format(CustomViewPathFormat, controllerName, viewName);
+//
+//         if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path)))
+//         {
+//             return ViewEngineResult.Found(viewName, CreateView(actionContext, path));
+//         }
+//
+//         return ViewEngineResult.NotFound(viewName, new List<string> { path });
+//     }
+//
+//     public ViewEngineResult FindPartialView(ActionContext actionContext, string partialViewName, bool useCachedResult)
+//     {
+//         // 使用相同的路径查找逻辑，您可以根据需要修改
+//         string controllerName = (actionContext.ActionDescriptor as ControllerActionDescriptor).ControllerName;
+//         string path = string.Format(CustomViewPathFormat, controllerName, partialViewName);
+//
+//         if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path)))
+//         {
+//             return ViewEngineResult.Found(partialViewName, CreateView(actionContext, path));
+//         }
+//
+//         return ViewEngineResult.NotFound(partialViewName, new List<string> { path });
+//     }
+//
+//     public Task<IView> CreateViewAsync(ActionContext actionContext, string viewPath)
+//     {
+//         return Task.FromResult(CreateView(actionContext, viewPath));
+//     }
+//
+//     private IView CreateView(ActionContext actionContext, string viewPath)
+//     {
+//         // 这里可以返回具体的视图实现，比如 RazorView
+//         return new RazorView(
+//             actionContext.HttpContext.RequestServices.GetService(typeof(IRazorViewFactory)) as IRazorViewFactory,
+//             viewPath
+//         );
+//     }
+//
+//     public IEnumerable<string> ViewLocationFormats => new[] { CustomViewPathFormat };
+//     public IEnumerable<string> PartialViewLocationFormats => new[] { CustomViewPathFormat };
+//
+//     public void ReleaseView(ActionContext context, IView view)
+//     {
+//         // 如果有资源释放的需求，可以在这里实现
+//     }
+// }
 //public class ViewRenderService : IViewRenderService
 //{
 //    private readonly IRazorViewEngine _razorViewEngine;
