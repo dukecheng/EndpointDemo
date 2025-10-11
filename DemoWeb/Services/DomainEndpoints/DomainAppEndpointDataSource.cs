@@ -19,6 +19,7 @@ public class DomainAppEndpointDataSource : EndpointDataSource
     private CancellationTokenSource _endpointsChangeSource = new();
     private IChangeToken _endpointsChangeToken;
     public override IChangeToken GetChangeToken() => Volatile.Read(ref _endpointsChangeToken);
+
     public DomainAppEndpointDataSource()
     {
         _endpointsChangeToken = new CancellationChangeToken(_endpointsChangeSource.Token);
@@ -40,6 +41,7 @@ public class DomainAppEndpointDataSource : EndpointDataSource
                     }
                 }
             }
+
             return _endpoints;
         }
     }
@@ -57,19 +59,23 @@ public class DomainAppEndpointDataSource : EndpointDataSource
             if (endpoint is null)
             {
                 //endpoint = _managedApiEndpointFactory.CreateManagedApiEndpoint($"managedapi-{existingRoute.Value.RouteId}", 0, _conventions);
-                endpoint = CreateEndpoint("/{**catchall}", 0, null, RequestProcessPipeline);
+                endpoint = CreateEndpoint(existingRoute.Value.RoutePattern, 0, null, RequestProcessPipeline);
                 existingRoute.Value.CachedEndpoint = endpoint;
             }
+
             endpoints.Add(endpoint);
         }
+
         UpdateEndpoints(endpoints);
 
 
-        Endpoint CreateEndpoint(string routePattern, int order, IList<Action<EndpointBuilder>>? conventions, RequestDelegate? requestPipeline)
+        Endpoint CreateEndpoint(string routePattern, int order, IList<Action<EndpointBuilder>>? conventions,
+            RequestDelegate? requestPipeline)
         {
             // conventions的作用是针对EndpointBuilder进行一些定制化的操作, 以达到所有的Endpoint都具有某些共性
             var builder = new RouteEndpointBuilder(
-                requestDelegate: requestPipeline ?? throw new InvalidOperationException("The pipeline hasn't been provided yet."),
+                requestDelegate: requestPipeline ??
+                                 throw new InvalidOperationException("The pipeline hasn't been provided yet."),
                 RoutePatternFactory.Parse(routePattern),
                 order)
             {
@@ -84,6 +90,7 @@ public class DomainAppEndpointDataSource : EndpointDataSource
                     convention(builder);
                 }
             }
+
             return builder.Build();
         }
     }
@@ -145,12 +152,14 @@ public class DomainAppEndpointDataSource : EndpointDataSource
              */
 
             await Task.CompletedTask;
-            _routesStates.TryAdd("DomainAppFirstRoute", new RouteState { });
+            _routesStates.TryAdd("Default", new RouteState { RoutePattern = "/{controller=Home}/{action=Index}" });
+            _routesStates.TryAdd("CatchAll", new RouteState { RoutePattern = "/{**catchall}" });
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException("Unable to load or apply the proxy configuration.", ex);
         }
+
         return this;
     }
 }

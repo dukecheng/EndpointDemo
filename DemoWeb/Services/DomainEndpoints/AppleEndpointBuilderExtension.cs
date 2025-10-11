@@ -65,14 +65,23 @@ public static class AppleEndpointBuilderExtension
         var applicatoinPartsManager = serviceProvider
             .GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
         var routeData = context.GetRouteData();
-        routeData.Values.Add("controller", "Home");
-        routeData.Values.Add("action", "Index");
-        var controllerName = routeData.Values["controller"]?.ToString() ?? "Home";
-        var actionName = routeData.Values["action"]?.ToString() ?? "Index";
+        var controllerName = routeData.Values["controller"]?.ToString();
+        var actionName = routeData.Values["action"]?.ToString();
+
+        if (string.IsNullOrWhiteSpace(controllerName) || string.IsNullOrWhiteSpace(actionName))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsync("Controller or Action not specified");
+            return;
+        }
+
+        bool isProcessed = false;
         var controllerType = FindControllerType(controllerName);
         if (controllerType != null)
         {
             // 创建 ActionDescriptor
+            MethodInfo methodInfo = controllerType.GetMethods()
+                .FirstOrDefault(m => string.Equals(m.Name, actionName, StringComparison.OrdinalIgnoreCase));
             var actionDescriptor = new ControllerActionDescriptor
             {
                 // 设置控制器类型信息
@@ -83,7 +92,7 @@ public static class AppleEndpointBuilderExtension
                 // 设置操作名称
                 ActionName = actionName,
                 // 设置相关的属性
-                MethodInfo = controllerType.GetMethod(actionName),
+                MethodInfo = methodInfo,
                 // 可以根据需要设置其他属性
                 Parameters = new List<ParameterDescriptor>(), // 这里可以添加参数描述符
                 // 其他属性...
@@ -96,78 +105,74 @@ public static class AppleEndpointBuilderExtension
             var controller = controllerActivator.Create(controllerContext) as Controller;
 
             // 调用指定的 Action 方法
-            var actionMethod = controllerType.GetMethod(actionName);
+            var actionMethod = actionDescriptor.MethodInfo;
             if (actionMethod != null)
             {
                 var result = actionMethod.Invoke(controller, null) as IActionResult;
 
                 // 处理 Action 结果
-                if (result != null)
+                if (result != null && result is ViewResult viewResult)
                 {
-                    // 确保结果是有效的
-                    if (result is ViewResult viewResult)
+                    if (viewResult.ViewData == null)
+                        viewResult.ViewData = new ViewDataDictionary(
+                            new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
+                            new Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary());
+                    if (viewResult.TempData == null)
+                        viewResult.TempData = serviceProvider.GetRequiredService<ITempDataDictionaryFactory>()
+                            .GetTempData(context);
+
+                    // 使用系统自带的视图查找器查找视图
+                    var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
+
+                    // 查找视图
+                    var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);
+                    if (viewEngineResult.Success)
                     {
-                        if (viewResult.ViewData == null)
-                            viewResult.ViewData = new ViewDataDictionary(
-                                new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
-                                new Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary());
-                        if (viewResult.TempData == null)
-                            viewResult.TempData = serviceProvider.GetRequiredService<ITempDataDictionaryFactory>()
-                                .GetTempData(context);
-
-                        // 使用系统自带的视图查找器查找视图
-                        var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
-
-                        // 查找视图
-                        var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);
-                        if (viewEngineResult.Success)
-                        {
-                            var view = viewEngineResult.View as Microsoft.AspNetCore.Mvc.Razor.RazorView;
-                            var viewData = new ViewDataDictionary(viewResult.ViewData);
-                            // 创建 ViewContext
-                            await using var writer = new StreamWriter(context.Response.Body);
+                        var view = viewEngineResult.View as Microsoft.AspNetCore.Mvc.Razor.RazorView;
+                        var viewData = new ViewDataDictionary(viewResult.ViewData);
+                        // 创建 ViewContext
+                        await using var writer = new StreamWriter(context.Response.Body);
 // 读取并设置Layout
-                            // var layout = viewData["Layout"] ?? "_Layout"; // 你可以检查ViewData中是否已有(Layout)或者设置为默认布局
-                            //
-                            // viewData["Layout"] = layout;
-                            //
-                            // view.RazorPage.Layout = layout.ToString();
+                        // var layout = viewData["Layout"] ?? "_Layout"; // 你可以检查ViewData中是否已有(Layout)或者设置为默认布局
+                        //
+                        // viewData["Layout"] = layout;
+                        //
+                        // view.RazorPage.Layout = layout.ToString();
 
-                            var viewContext = new ViewContext(
-                                actionContext,
-                                view,
-                                viewData,
-                                viewResult.TempData,
-                                writer,
-                                new HtmlHelperOptions()
-                            );
+                        var viewContext = new ViewContext(
+                            actionContext,
+                            view,
+                            viewData,
+                            viewResult.TempData,
+                            writer,
+                            new HtmlHelperOptions()
+                        );
 
 
-                            // 渲染视图
-                            await view.RenderAsync(viewContext);
-                        }
-                        else
-                        {
-                            // 处理找不到视图的情况
-                            context.Response.StatusCode = StatusCodes.Status404NotFound;
-                            await context.Response.WriteAsync("视图未找到");
-                        }
+                        // 渲染视图
+                        await view.RenderAsync(viewContext);
                     }
                     else
                     {
-                        // 处理其他类型的结果
+                        // 处理找不到视图的情况
+                        context.Response.StatusCode = StatusCodes.Status404NotFound;
+                        await context.Response.WriteAsync("View not found");
                     }
                 }
             }
         }
+        else
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsync("Controller not found");
+        }
 
-        var host = context.Request.Host.Host;
-        await context.Response.WriteAsync($"Hello from Apple App! Host: {host}");
+        return;
 
         Type FindControllerType(string controllerName)
         {
             // 遍历 ApplicationPartManager 中的所有程序集，查找控制器类型
-            foreach (AssemblyPart part in applicatoinPartsManager.ApplicationParts)
+            foreach (AssemblyPart part in applicatoinPartsManager.ApplicationParts.OfType<AssemblyPart>())
             {
                 // 获取每个 ApplicationPart 的特征
                 var assembly = part.Assembly;
@@ -182,6 +187,17 @@ public static class AppleEndpointBuilderExtension
 
             return null;
         }
+    }
+}
+
+public class CustomViewEngine : RazorViewEngine
+{
+    public CustomViewEngine(IRazorPageFactoryProvider pageFactory, IRazorPageActivator pageActivator,
+        HtmlEncoder htmlEncoder, IOptions<RazorViewEngineOptions> optionsAccessor, ILoggerFactory loggerFactory,
+        DiagnosticListener diagnosticListener)
+        : base(pageFactory, pageActivator, htmlEncoder, optionsAccessor,
+            loggerFactory, diagnosticListener)
+    {
     }
 }
 
