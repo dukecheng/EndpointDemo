@@ -2,6 +2,6 @@
 
 public class RouteState
 {
-    public string RoutePattern { get; set; }
+    public required string RoutePattern { get; set; }
     public Endpoint? CachedEndpoint { get; set; }
 }

@@ -1,18 +1,18 @@
-﻿using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Mvc.ViewEngines;
-using Microsoft.Extensions.Options;
 
 namespace DemoWeb.Services.DomainEndpoints;
-
 public static class AppleEndpointBuilderExtension
 {
     /// <summary>
@@ -61,9 +61,12 @@ public static class AppleEndpointBuilderExtension
         // 获取 IControllerActivator 实例
         var serviceProvider = context.RequestServices;
         var controllerActivator = serviceProvider.GetRequiredService<IControllerActivator>();
+        var hostEnvironment = serviceProvider.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        var pageCacheService = serviceProvider.GetRequiredService<PageCacheService>();
 
         var applicatoinPartsManager = serviceProvider
             .GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
+
         var routeData = context.GetRouteData();
         var controllerName = routeData.Values["controller"]?.ToString();
         var actionName = routeData.Values["action"]?.ToString();
@@ -74,14 +77,11 @@ public static class AppleEndpointBuilderExtension
             await context.Response.WriteAsync("Controller or Action not specified");
             return;
         }
-
-        bool isProcessed = false;
         var controllerType = FindControllerType(controllerName);
         if (controllerType != null)
         {
             // 创建 ActionDescriptor
-            MethodInfo methodInfo = controllerType.GetMethods()
-                .FirstOrDefault(m => string.Equals(m.Name, actionName, StringComparison.OrdinalIgnoreCase));
+            MethodInfo methodInfo = controllerType.GetMethods().FirstOrDefault(m => string.Equals(m.Name, actionName, StringComparison.OrdinalIgnoreCase));
             var actionDescriptor = new ControllerActionDescriptor
             {
                 // 设置控制器类型信息
@@ -130,9 +130,10 @@ public static class AppleEndpointBuilderExtension
                     {
                         var view = viewEngineResult.View as Microsoft.AspNetCore.Mvc.Razor.RazorView;
                         var viewData = new ViewDataDictionary(viewResult.ViewData);
+
                         // 创建 ViewContext
-                        await using var writer = new StreamWriter(context.Response.Body);
-// 读取并设置Layout
+                        await using var writer = new StringWriter();
+                        // 读取并设置Layout
                         // var layout = viewData["Layout"] ?? "_Layout"; // 你可以检查ViewData中是否已有(Layout)或者设置为默认布局
                         //
                         // viewData["Layout"] = layout;
@@ -151,6 +152,10 @@ public static class AppleEndpointBuilderExtension
 
                         // 渲染视图
                         await view.RenderAsync(viewContext);
+                        var content = writer.ToString();
+                        await pageCacheService.WriteCacheFile(context.Request.Path, content);
+                        context.Response.ContentType = "text/html";
+                        await context.Response.WriteAsync(content);
                     }
                     else
                     {
@@ -200,101 +205,3 @@ public class CustomViewEngine : RazorViewEngine
     {
     }
 }
-
-// public class CustomViewEngine : IViewEngine
-// {
-//     private const string CustomViewPathFormat = "/Views/{0}/{1}.cshtml"; // {0} 是 Controller Name, {1} 是 View Name
-//
-//     public ViewEngineResult FindView(ActionContext actionContext, string viewName, bool useCachedResult)
-//     {
-//         // 构造自定义视图路径
-//         string controllerName = (actionContext.ActionDescriptor as ControllerActionDescriptor).ControllerName;
-//         string path = string.Format(CustomViewPathFormat, controllerName, viewName);
-//
-//         if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path)))
-//         {
-//             return ViewEngineResult.Found(viewName, CreateView(actionContext, path));
-//         }
-//
-//         return ViewEngineResult.NotFound(viewName, new List<string> { path });
-//     }
-//
-//     public ViewEngineResult FindPartialView(ActionContext actionContext, string partialViewName, bool useCachedResult)
-//     {
-//         // 使用相同的路径查找逻辑，您可以根据需要修改
-//         string controllerName = (actionContext.ActionDescriptor as ControllerActionDescriptor).ControllerName;
-//         string path = string.Format(CustomViewPathFormat, controllerName, partialViewName);
-//
-//         if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path)))
-//         {
-//             return ViewEngineResult.Found(partialViewName, CreateView(actionContext, path));
-//         }
-//
-//         return ViewEngineResult.NotFound(partialViewName, new List<string> { path });
-//     }
-//
-//     public Task<IView> CreateViewAsync(ActionContext actionContext, string viewPath)
-//     {
-//         return Task.FromResult(CreateView(actionContext, viewPath));
-//     }
-//
-//     private IView CreateView(ActionContext actionContext, string viewPath)
-//     {
-//         // 这里可以返回具体的视图实现，比如 RazorView
-//         return new RazorView(
-//             actionContext.HttpContext.RequestServices.GetService(typeof(IRazorViewFactory)) as IRazorViewFactory,
-//             viewPath
-//         );
-//     }
-//
-//     public IEnumerable<string> ViewLocationFormats => new[] { CustomViewPathFormat };
-//     public IEnumerable<string> PartialViewLocationFormats => new[] { CustomViewPathFormat };
-//
-//     public void ReleaseView(ActionContext context, IView view)
-//     {
-//         // 如果有资源释放的需求，可以在这里实现
-//     }
-// }
-//public class ViewRenderService : IViewRenderService
-//{
-//    private readonly IRazorViewEngine _razorViewEngine;
-//    private readonly ITempDataProvider _tempDataProvider;
-//    private readonly IServiceProvider _serviceProvider;
-
-//    public ViewRenderService(IRazorViewEngine razorViewEngine, ITempDataProvider tempDataProvider, IServiceProvider serviceProvider)
-//    {
-//        _razorViewEngine = razorViewEngine;
-//        _tempDataProvider = tempDataProvider;
-//        _serviceProvider = serviceProvider;
-//    }
-
-//    public async Task<string> RenderToStringAsync(string viewName, object model)
-//    {
-//        var actionContext = new ActionContext(
-//            new DefaultHttpContext { RequestServices = _serviceProvider },
-//            new RouteData(),
-//            new ActionDescriptor()
-//        );
-
-//        using (var writer = new StringWriter())
-//        {
-//            var viewResult = _razorViewEngine.FindView(actionContext, viewName, false);
-//            if (viewResult.View == null)
-//            {
-//                throw new ArgumentNullException($"View {viewName} not found.");
-//            }
-
-//            var viewContext = new ViewContext(
-//                actionContext,
-//                viewResult.View,
-//                new ViewDataDictionary<object>(model),
-//                new TempDataDictionary(actionContext.HttpContext, _tempDataProvider),
-//                writer,
-//                new HtmlHelperOptions()
-//            );
-
-//            await viewResult.View.RenderAsync(viewContext);
-//            return writer.ToString();
-//        }
-//    }
-//}

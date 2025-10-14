@@ -5,6 +5,13 @@ using System.Diagnostics;
 
 namespace DemoWeb.Controllers
 {
+    public class ErrorController : Controller
+    {
+        public IActionResult Fallback()
+        {
+            return Content("Fallback");
+        }
+    }
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
