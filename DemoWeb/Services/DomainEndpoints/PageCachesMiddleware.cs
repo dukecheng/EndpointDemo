@@ -23,13 +23,7 @@ public class PageCachesMiddleware
         if (context.Request.Query.ContainsKey("RefreshCache") && bool.TryParse(context.Request.Query["RefreshCache"], out var refreshCache) && refreshCache)
         {
             // 跳过静态处理，继续执行管道中的下一个中间件
-            if (lastSegment?.EndsWith(".html") ?? false)
-            {
-                if (lastSegment.Equals("index.html"))
-                    context.Request.Path = string.Join("/", pathSegments.Take(pathSegments.Count - 1).Select(x => x.ToLower()));
-                else
-                    context.Request.Path = requestPath.Substring(0, requestPath.Length - 5);
-            }
+            RemoveHtmlExtension(context, pathSegments, lastSegment);
             await _next(context);
             return;
         }
@@ -64,8 +58,17 @@ public class PageCachesMiddleware
             }
             else
             {
-                context.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
+                var autoGenerateCache = true; // 这里可以根据需要设置为 true 或 false
+                if (autoGenerateCache)
+                {
+                    // 跳过静态处理，继续执行管道中的下一个中间件
+                    RemoveHtmlExtension(context, pathSegments, lastSegment);
+                }
+                else
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+                }
             }
         }
         catch (IOException ex)
@@ -81,5 +84,21 @@ public class PageCachesMiddleware
 
         // 如果文件不存在，调用下一个中间件
         await _next(context);
+
+        static void RemoveHtmlExtension(HttpContext context, List<string> pathSegments, string? lastSegment)
+        {
+            if (lastSegment?.EndsWith(".html") ?? false)
+            {
+                if (lastSegment.Equals("index.html"))
+                    context.Request.Path = "/" + string.Join("/", pathSegments.Take(pathSegments.Count - 1).Select(x => x.ToLower()));
+                else
+                {
+                    var newSegments = new List<string>(pathSegments.Count + 1);
+                    newSegments.AddRange(pathSegments.Take(pathSegments.Count - 1));
+                    newSegments.Add(lastSegment.Substring(0, lastSegment.Length - 5));
+                    context.Request.Path = "/" + string.Join("/", newSegments.Select(x => x.ToLower()));
+                }
+            }
+        }
     }
 }
