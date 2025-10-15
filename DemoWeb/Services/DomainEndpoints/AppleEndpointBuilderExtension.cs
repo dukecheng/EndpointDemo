@@ -48,6 +48,15 @@ public static class AppleEndpointBuilderExtension
     {
         var appBuilder = endpoints.CreateApplicationBuilder();
 
+        appBuilder.Use(async (httpContext, _next) =>
+        {
+            httpContext.Features.Set<IDomainAppeature>(new DomainAppFeature
+            {
+                GenerateMode = GenerateMode.ForceGenerating
+            });
+            await _next(httpContext);
+        });
+
         // Add middleware to the pipeline
         appBuilder.Run(FinalRequestProcess);
 

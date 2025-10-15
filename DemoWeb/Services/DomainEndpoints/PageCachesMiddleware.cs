@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using Microsoft.AspNetCore.Http;
+using System.Linq;
 
 namespace DemoWeb.Services.DomainEndpoints;
 
@@ -6,29 +7,47 @@ public class PageCachesMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IHostEnvironment _hostEnvironment;
+    private bool AutoGenerateCache = false; // 这里可以根据需要设置为 true 或 false
 
     public PageCachesMiddleware(RequestDelegate next, IHostEnvironment hostEnvironment)
     {
         _next = next;
         _hostEnvironment = hostEnvironment;
+        AutoGenerateCache = true;
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var requestPath = context.Request.Path.Value ?? string.Empty;
-        var pathSegments = requestPath.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList() ?? new List<string>(0);
-        var lastSegment = pathSegments.LastOrDefault();
-
-        // 检查查询字符串中是否包含 RefreshCache=true
-        if (context.Request.Query.ContainsKey("RefreshCache") && bool.TryParse(context.Request.Query["RefreshCache"], out var refreshCache) && refreshCache)
+        // 只有GET的请求走Cache
+        if (!context.Request.Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
         {
-            // 跳过静态处理，继续执行管道中的下一个中间件
-            RemoveHtmlExtension(context, pathSegments, lastSegment);
             await _next(context);
             return;
         }
 
+        var requestPath = context.Request.Path.Value ?? string.Empty;
+        var pathSegments = requestPath.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList() ?? new List<string>(0);
+        var lastSegment = pathSegments.LastOrDefault();
 
+        // 只处理mvc请求以及.html的请求
+        if (!CanProcess(lastSegment))
+        {
+            await _next(context);
+            return;
+        }
+
+        // 检查查询字符串中是否包含 RefreshCache=true
+        // 对于mvc地址也支持直接生成
+        if (context.Request.Query.ContainsKey("RefreshCache") && bool.TryParse(context.Request.Query["RefreshCache"], out var refreshCache) && refreshCache)
+        {
+            // 跳过静态处理，继续执行管道中的下一个中间件
+            RemoveHtmlExtension(context, pathSegments, lastSegment);
+            SetDomainAppFeature(context, GenerateMode.ForceGenerating);
+            await _next(context);
+            return;
+        }
+
+        // 规范化格式，没有带.html的mvc原始请求自动带上.html后进行301
         if (pathSegments.Count == 0)
         {
             context.Response.Headers.Location = "/index.html";
@@ -40,7 +59,7 @@ public class PageCachesMiddleware
             context.Response.Headers.Location = "/" + string.Join("/", pathSegments.Take(pathSegments.Count).Select(x => x.ToLower())) + ".html";
             context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
             return;
-        }
+        }       
 
         var serviceProvider = context.RequestServices;
         var pageCacheService = serviceProvider.GetRequiredService<PageCacheService>();
@@ -58,11 +77,11 @@ public class PageCachesMiddleware
             }
             else
             {
-                var autoGenerateCache = true; // 这里可以根据需要设置为 true 或 false
-                if (autoGenerateCache)
+                if (AutoGenerateCache)
                 {
                     // 跳过静态处理，继续执行管道中的下一个中间件
                     RemoveHtmlExtension(context, pathSegments, lastSegment);
+                    SetDomainAppFeature(context, GenerateMode.AutoGenerating);
                 }
                 else
                 {
@@ -99,6 +118,37 @@ public class PageCachesMiddleware
                     context.Request.Path = "/" + string.Join("/", newSegments.Select(x => x.ToLower()));
                 }
             }
+        }
+
+        static void SetDomainAppFeature(HttpContext context, GenerateMode generateMode)
+        {
+            var feature = context.Features.Get<IDomainAppeature>();
+            if (feature == null)
+            {
+                feature = new DomainAppFeature();
+            }
+            feature.GenerateMode = generateMode;
+            context.Features.Set(feature);
+        }
+
+        // 1. 请求的地址为空
+        // 2. 请求的地址没有后缀
+        // 3. 请求的地址有后缀，但是后缀是.html
+        static bool CanProcess(string? lastSegment)
+        {
+            if (string.IsNullOrEmpty(lastSegment))
+            {
+                return true;
+            }
+            else if (lastSegment.IndexOf('.') == -1)
+            {
+                return true;
+            }
+            else if (lastSegment.IndexOf(".") > 0 && lastSegment.EndsWith(".html"))
+            {
+                return true;
+            }
+            return false;
         }
     }
 }

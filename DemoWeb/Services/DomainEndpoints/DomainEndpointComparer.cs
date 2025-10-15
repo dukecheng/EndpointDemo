@@ -6,3 +6,19 @@ internal class DomainEndpointComparer : EndpointMetadataComparer<EndpointPointMa
 {
     protected override int CompareMetadata(EndpointPointMatcherMetadata x, EndpointPointMatcherMetadata y) => 0;
 }
+public interface IDomainAppeature
+{
+    GenerateMode GenerateMode { get; set; }
+}
+public class DomainAppFeature : IDomainAppeature
+{
+    public GenerateMode GenerateMode { get; set; }
+
+}
+public enum GenerateMode
+{
+    None = 0,
+    ForceGenerating,
+    AutoGenerating,
+    BatchGenerating,
+}
