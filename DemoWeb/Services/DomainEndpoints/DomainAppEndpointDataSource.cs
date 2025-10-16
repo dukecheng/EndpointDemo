@@ -82,7 +82,7 @@ public class DomainAppEndpointDataSource : EndpointDataSource
                 RoutePatternFactory.Parse(routeState.RoutePattern),
                 order)
             {
-                DisplayName = routeState.RoutePattern
+                DisplayName = $"{routeState.DomainApp.SmallerIdentifier}-{routeState.RoutePattern}"
             };
 
             builder.Metadata.Add(new EndpointPointMatcherMetadata() { Host = routeState.Host });
@@ -157,10 +157,21 @@ public class DomainAppEndpointDataSource : EndpointDataSource
             await Task.CompletedTask;
             foreach (var item in _domainApps)
             {
-                _routesStates.TryAdd("DomainAppResource", new RouteState { Host = item.Host, RoutePattern = "/{lang:SupportedLocals}/resource/{level1Category}/{*slug}" });
-                _routesStates.TryAdd("DomainAppDefault", new RouteState { Host = item.Host, RoutePattern = "/{lang:SupportedLocals}/{controller=Home}/{action=Index}" });
+                _routesStates.TryAdd($"{item.SmallerIdentifier}-DomainAppResource",
+                    new RouteState
+                    {
+                        Host = item.Host,
+                        DomainApp = item,
+                        RoutePattern = "/{lang:SupportedLocals}/resource/{level1Category}/{*slug}"
+                    });
+                _routesStates.TryAdd($"{item.SmallerIdentifier}-DomainAppDefault",
+                    new RouteState
+                    {
+                        Host = item.Host,
+                        DomainApp = item,
+                        RoutePattern = "/{lang:SupportedLocals}/{controller=Home}/{action=Index}"
+                    });
             }
-
         }
         catch (Exception ex)
         {

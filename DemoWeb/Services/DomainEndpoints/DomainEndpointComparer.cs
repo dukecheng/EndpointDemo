@@ -9,11 +9,12 @@ internal class DomainEndpointComparer : EndpointMetadataComparer<EndpointPointMa
 public interface IDomainAppeature
 {
     GenerateMode GenerateMode { get; set; }
+    DomainApp DomainApp { get; set; }
 }
 public class DomainAppFeature : IDomainAppeature
 {
     public GenerateMode GenerateMode { get; set; }
-
+    public DomainApp DomainApp { get; set; }
 }
 public enum GenerateMode
 {

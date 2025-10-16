@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Mvc.ViewEngines;
 
 namespace DemoWeb.Services.DomainEndpoints;
 
@@ -50,10 +51,18 @@ public static class AppleEndpointBuilderExtension
 
         appBuilder.Use(async (httpContext, _next) =>
         {
-            httpContext.Features.Set<IDomainAppeature>(new DomainAppFeature
-            {
-                GenerateMode = GenerateMode.ForceGenerating
-            });
+            var domainAppFeature = httpContext.Features.Get<IDomainAppeature>() ??
+                                   throw new InvalidOperationException("DomainAppFeature is missing.");
+            var serviceProvider = httpContext.RequestServices;
+            var domainApps = serviceProvider.GetRequiredService<IOptions<DomainApps>>().Value;
+
+            var host = httpContext.Request.Host.Value;
+            var domainApp =
+                domainApps.FirstOrDefault(x => string.Equals(x.Host, host, StringComparison.OrdinalIgnoreCase)) ??
+                throw new InvalidOperationException($"DomainApp {host} does not exist.");
+            domainAppFeature.DomainApp = domainApp;
+            httpContext.Features.Set(domainAppFeature);
+
             await _next(httpContext);
         });
 
@@ -136,12 +145,24 @@ public static class AppleEndpointBuilderExtension
                     //var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
                     var razorPageFactoryProvider = serviceProvider.GetRequiredService<IRazorPageFactoryProvider>();
                     var razorPageActivator = serviceProvider.GetRequiredService<IRazorPageActivator>();
-                    var HtmlEncoder = serviceProvider.GetRequiredService<HtmlEncoder>();
-                    var ILoggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-                    var DiagnosticListener = serviceProvider.GetRequiredService<DiagnosticListener>();
-                    var options = Options.Create<RazorViewEngineOptions>(new RazorViewEngineOptions { });
+                    var htmlEncoder = serviceProvider.GetRequiredService<HtmlEncoder>();
+                    var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+                    var diagnosticListener = serviceProvider.GetRequiredService<DiagnosticListener>();
+                    var defaultViewEngineOption =
+                        serviceProvider.GetRequiredService<IOptions<RazorViewEngineOptions>>();
+
+                    var domainApp = context.Features.Get<IDomainAppeature>()?.DomainApp ??
+                                    throw new InvalidOperationException("DomainAppFeature is missing.");
+
+                    var veOptions = new RazorViewEngineOptions();
+                    var viewBase = $"/SiteViews/{domainApp.SmallerIdentifier}";
+                    veOptions.ViewLocationFormats.Add(viewBase + "/Views/{1}/{0}.cshtml");
+                    veOptions.ViewLocationFormats.Add(viewBase + "/Views/Shared/{0}.cshtml");
+                    veOptions.AreaViewLocationFormats.Add(viewBase + "/Areas/{2}/Views/{1}/{0}.cshtml");
+                    veOptions.AreaViewLocationFormats.Add(viewBase + "/Areas/{2}/Views/Shared/{0}.cshtml");
+                    var options = Options.Create(veOptions);
                     var viewEngine = new ViewEngins.DomainAppRazorViewEngine(razorPageFactoryProvider,
-                        razorPageActivator, HtmlEncoder, options, ILoggerFactory, DiagnosticListener);
+                        razorPageActivator, htmlEncoder, options, loggerFactory, diagnosticListener);
 
                     // 查找视图
                     var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);

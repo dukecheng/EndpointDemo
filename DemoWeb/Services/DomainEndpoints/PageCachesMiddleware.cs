@@ -11,7 +11,8 @@ public class PageCachesMiddleware
     private readonly DomainApps _domainAppsOption;
     private bool AutoGenerateCache = false; // 这里可以根据需要设置为 true 或 false
 
-    public PageCachesMiddleware(RequestDelegate next, IHostEnvironment hostEnvironment, IOptions<DomainApps> domainAppsOption)
+    public PageCachesMiddleware(RequestDelegate next, IHostEnvironment hostEnvironment,
+        IOptions<DomainApps> domainAppsOption)
     {
         _next = next;
         _hostEnvironment = hostEnvironment;
@@ -29,14 +30,26 @@ public class PageCachesMiddleware
         }
 
         // 只针对DomainApps
-        if(!_domainAppsOption.Any(x=>x.Host.Equals(context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
+        if (!_domainAppsOption.Any(x => x.Host.Equals(context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);
             return;
         }
 
+        var langSegment = context.Items["Lang"]?.ToString() ?? string.Empty;
+        var isLangExist = !string.IsNullOrEmpty(langSegment);
         var requestPath = context.Request.Path.Value ?? string.Empty;
-        var pathSegments = requestPath.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList() ?? new List<string>(0);
+        var fullPathSegments = requestPath.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();
+        List<string> pathSegments = null;
+        if (isLangExist)
+        {
+            pathSegments = fullPathSegments.Skip(1).ToList();
+        }
+        else
+        {
+            pathSegments = fullPathSegments;
+        }
+
         var lastSegment = pathSegments.LastOrDefault();
 
         // 只处理mvc请求以及.html的请求
@@ -48,10 +61,11 @@ public class PageCachesMiddleware
 
         // 检查查询字符串中是否包含 RefreshCache=true
         // 对于mvc地址也支持直接生成
-        if (context.Request.Query.ContainsKey("RefreshCache") && bool.TryParse(context.Request.Query["RefreshCache"], out var refreshCache) && refreshCache)
+        if (context.Request.Query.ContainsKey("RefreshCache") &&
+            bool.TryParse(context.Request.Query["RefreshCache"], out var refreshCache) && refreshCache)
         {
             // 跳过静态处理，继续执行管道中的下一个中间件
-            RemoveHtmlExtension(context, pathSegments, lastSegment);
+            RemoveHtmlExtension(context, langSegment, pathSegments);
             SetDomainAppFeature(context, GenerateMode.ForceGenerating);
             await _next(context);
             return;
@@ -60,13 +74,16 @@ public class PageCachesMiddleware
         // 规范化格式，没有带.html的mvc原始请求自动带上.html后进行301
         if (pathSegments.Count == 0)
         {
-            context.Response.Headers.Location = "/index.html";
+            context.Response.Headers.Location = $"/{langSegment}/index.html";
             context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
             return;
         }
         else if (lastSegment != null && !lastSegment.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
         {
-            context.Response.Headers.Location = "/" + string.Join("/", pathSegments.Take(pathSegments.Count).Select(x => x.ToLower())) + ".html";
+            context.Response.Headers.Location = $"/{langSegment}/" +
+                                                string.Join("/",
+                                                    pathSegments.Take(pathSegments.Count).Select(x => x.ToLower())) +
+                                                ".html";
             context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
             return;
         }
@@ -90,7 +107,7 @@ public class PageCachesMiddleware
                 if (AutoGenerateCache)
                 {
                     // 跳过静态处理，继续执行管道中的下一个中间件
-                    RemoveHtmlExtension(context, pathSegments, lastSegment);
+                    RemoveHtmlExtension(context, langSegment, pathSegments);
                     SetDomainAppFeature(context, GenerateMode.AutoGenerating);
                 }
                 else
@@ -103,29 +120,31 @@ public class PageCachesMiddleware
         catch (IOException ex)
         {
             // 记录错误信息
-            Console.Error.WriteLine($"Error reading cache file: {ex.Message}");
+            await Console.Error.WriteLineAsync($"Error reading cache file: {ex.Message}");
         }
         catch (Exception ex)
         {
             // 处理其他潜在异常
-            Console.Error.WriteLine($"Unexpected error: {ex.Message}");
+            await Console.Error.WriteLineAsync($"Unexpected error: {ex.Message}");
         }
 
         // 如果文件不存在，调用下一个中间件
         await _next(context);
 
-        static void RemoveHtmlExtension(HttpContext context, List<string> pathSegments, string? lastSegment)
+        static void RemoveHtmlExtension(HttpContext context, string langSegment, List<string> pathSegments)
         {
+            var lastSegment = pathSegments.LastOrDefault();
             if (lastSegment?.EndsWith(".html") ?? false)
             {
+                var urlSegments = new List<string>(pathSegments.Count + 2) { langSegment };
+                urlSegments.AddRange(pathSegments.Take(pathSegments.Count - 1));
+
                 if (lastSegment.Equals("index.html"))
-                    context.Request.Path = "/" + string.Join("/", pathSegments.Take(pathSegments.Count - 1).Select(x => x.ToLower()));
+                    context.Request.Path = "/" + string.Join("/", urlSegments.Select(x => x.ToLower()));
                 else
                 {
-                    var newSegments = new List<string>(pathSegments.Count + 1);
-                    newSegments.AddRange(pathSegments.Take(pathSegments.Count - 1));
-                    newSegments.Add(lastSegment.Substring(0, lastSegment.Length - 5));
-                    context.Request.Path = "/" + string.Join("/", newSegments.Select(x => x.ToLower()));
+                    urlSegments.Add(lastSegment.Substring(0, lastSegment.Length - 5));
+                    context.Request.Path = "/" + string.Join("/", urlSegments.Select(x => x.ToLower()));
                 }
             }
         }
@@ -137,6 +156,7 @@ public class PageCachesMiddleware
             {
                 feature = new DomainAppFeature();
             }
+
             feature.GenerateMode = generateMode;
             context.Features.Set(feature);
         }
@@ -158,6 +178,7 @@ public class PageCachesMiddleware
             {
                 return true;
             }
+
             return false;
         }
     }
