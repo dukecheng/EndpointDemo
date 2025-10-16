@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using System.Linq;
 
 namespace DemoWeb.Services.DomainEndpoints;
@@ -7,12 +8,14 @@ public class PageCachesMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IHostEnvironment _hostEnvironment;
+    private readonly DomainApps _domainAppsOption;
     private bool AutoGenerateCache = false; // 这里可以根据需要设置为 true 或 false
 
-    public PageCachesMiddleware(RequestDelegate next, IHostEnvironment hostEnvironment)
+    public PageCachesMiddleware(RequestDelegate next, IHostEnvironment hostEnvironment, IOptions<DomainApps> domainAppsOption)
     {
         _next = next;
         _hostEnvironment = hostEnvironment;
+        _domainAppsOption = domainAppsOption.Value;
         AutoGenerateCache = true;
     }
 
@@ -20,6 +23,13 @@ public class PageCachesMiddleware
     {
         // 只有GET的请求走Cache
         if (!context.Request.Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
+        // 只针对DomainApps
+        if(!_domainAppsOption.Any(x=>x.Host.Equals(context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);
             return;
@@ -59,7 +69,7 @@ public class PageCachesMiddleware
             context.Response.Headers.Location = "/" + string.Join("/", pathSegments.Take(pathSegments.Count).Select(x => x.ToLower())) + ".html";
             context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
             return;
-        }       
+        }
 
         var serviceProvider = context.RequestServices;
         var pageCacheService = serviceProvider.GetRequiredService<PageCacheService>();

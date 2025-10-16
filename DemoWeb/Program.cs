@@ -1,6 +1,8 @@
-﻿using DemoWeb.Services;
+﻿using Autofac.Core;
+using DemoWeb.Services;
 using DemoWeb.Services.DomainEndpoints;
 using DemoWeb.Services.SupportedLocals;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection.PortableExecutable;
@@ -21,6 +23,10 @@ builder.Services.AddScoped<PageCacheService>();
 builder.Services.Configure<RouteOptions>(options =>
 {
     options.ConstraintMap.Add("SupportedLocals", typeof(LangRouteConstraint));
+});
+builder.Services.AddRouting(options =>
+{
+    options.ConstraintMap.Add("host", typeof(HostRouteConstraint));
 });
 
 var app = builder.Build();
@@ -46,6 +52,6 @@ app.MapAppleAppEndpoints();
 //("CatchAll", "{**catchall}", new { controller = "Error", action = "CatchAll" });
 app.MapControllerRoute(
     name: "default",
-    pattern: "/{controller=Home}/{action=Index}/{id?}");
+    pattern: "/{controller=Home}/{action=Index}/{id?}").RequireHost(builder.Configuration.GetSection("HostingDomains")?.Get<string[]>() ?? ["localhost"]);
 app.MapFallbackToController("Fallback", "Error");
 app.Run();

@@ -5,7 +5,24 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace DemoWeb.Services;
+public class HostRouteConstraint : IRouteConstraint
+{
+    private readonly string _host;
 
+    public HostRouteConstraint(string host)
+    {
+        _host = host;
+    }
+
+    public bool Match(HttpContext httpContext,
+                      IRouter route,
+                      string routeKey,
+                      RouteValueDictionary values,
+                      RouteDirection routeDirection)
+    {
+        return httpContext.Request.Host.Value.Equals(_host, StringComparison.OrdinalIgnoreCase);
+    }
+}
 public class StaticSiteGenerator
 {
     private readonly IViewRenderService _viewRenderService;

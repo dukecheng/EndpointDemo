@@ -1,6 +1,7 @@
-using System.Globalization;
 using AgileLabs;
 using DemoWeb.Services.SupportedLocals;
+using Microsoft.Extensions.Options;
+using System.Globalization;
 
 namespace DemoWeb.Services;
 
@@ -10,11 +11,13 @@ namespace DemoWeb.Services;
 public class RequestLocalizationMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly DomainApps _domainAppsOption;
     private readonly HashSet<string> _supportedCultures;
 
-    public RequestLocalizationMiddleware(RequestDelegate next)
+    public RequestLocalizationMiddleware(RequestDelegate next, IOptions<DomainApps> domainAppsOption)
     {
         _next = next;
+        this._domainAppsOption = domainAppsOption.Value;
         _supportedCultures =
             [.. SupportedLocalService.GetAllEnabledLocals().Select(x => x.ToString().ToLower()).ToList()];
     }
@@ -24,6 +27,13 @@ public class RequestLocalizationMiddleware
         var path = context.Request.Path.Value;
         // 检查请求路径、静态文件、请求方法
         if (!context.Request.Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
+        // 只针对DomainApps
+        if (!_domainAppsOption.Any(x => x.Host.Equals(context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);
             return;
