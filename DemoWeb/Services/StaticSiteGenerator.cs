@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace DemoWeb.Services;
+
 public class StaticSiteGenerator
 {
     private readonly IViewRenderService _viewRenderService;

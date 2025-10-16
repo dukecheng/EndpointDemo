@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="#DC2626"/>
+    <!-- "学"字极简设计缩略版 -->
+    <circle cx="32" cy="20" r="3.5" fill="white"/>
+    <rect x="20" y="28" width="24" height="4" rx="2" fill="white"/>
+    <rect x="20" y="36" width="24" height="4" rx="2" fill="white"/>
+    <rect x="28" y="44" width="8" height="12" rx="4" fill="white"/>
+</svg>

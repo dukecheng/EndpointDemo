@@ -10,3 +10,13 @@
 **/*/lib
 **/*/.PageCaches
 *.user
+.idea
+**/*/node_modules
+**/*/wwwroot/lib
+*.suo
+*.userosscache
+*.sln.docstates
+*.cache
+*.log
+.DS_Store
+*.pdb

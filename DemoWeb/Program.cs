@@ -2,6 +2,7 @@
 using DemoWeb.Services.DomainEndpoints;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection.PortableExecutable;
+using DemoWeb.Services.SupportedLocals;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,10 +12,14 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<IViewRenderService, ViewRenderService>();
 builder.Services.AddScoped<StaticSiteGenerator>();
 
-builder.Services.TryAddSingleton<DomainAppEndpointDataSource>();// Mvc默认的DefaultEndpointDataSource是单例的
+builder.Services.TryAddSingleton<DomainAppEndpointDataSource>(); // Mvc默认的DefaultEndpointDataSource是单例的
 builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<MatcherPolicy, DomainAppEndpointMatcherPolicy>());
 
 builder.Services.AddScoped<PageCacheService>();
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.ConstraintMap.Add("SupportedLocals", typeof(LangRouteConstraint));
+});
 
 var app = builder.Build();
 
@@ -28,7 +33,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
+app.UseMiddleware<RequestLocalizationMiddleware>();
 app.UseMiddleware<PageCachesMiddleware>();
 
 app.UseRouting();
@@ -39,6 +44,6 @@ app.MapAppleAppEndpoints();
 //("CatchAll", "{**catchall}", new { controller = "Error", action = "CatchAll" });
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+    pattern: "/{lang:SupportedLocals=en}/{controller=Home}/{action=Index}/{id?}");
 app.MapFallbackToController("Fallback", "Error");
 app.Run();

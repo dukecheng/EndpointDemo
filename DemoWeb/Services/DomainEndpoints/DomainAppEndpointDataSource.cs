@@ -152,8 +152,8 @@ public class DomainAppEndpointDataSource : EndpointDataSource
              */
 
             await Task.CompletedTask;
-            _routesStates.TryAdd("DomainAppResource", new RouteState { RoutePattern = "/resource/{level1Category}/{*slug}" });
-            _routesStates.TryAdd("DomainAppDefault", new RouteState { RoutePattern = "/{controller=Home}/{action=Index}" });
+            _routesStates.TryAdd("DomainAppResource", new RouteState { RoutePattern = "/{lang:SupportedLocals}/resource/{level1Category}/{*slug}" });
+            _routesStates.TryAdd("DomainAppDefault", new RouteState { RoutePattern = "/{lang:SupportedLocals}/{controller=Home}/{action=Index}" });
         }
         catch (Exception ex)
         {
