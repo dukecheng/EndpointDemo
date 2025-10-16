@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Routing.Matching;
+using Microsoft.Extensions.Options;
 
 namespace DemoWeb.Services.DomainEndpoints;
 
@@ -39,7 +40,11 @@ public class DomainAppEndpointMatcherPolicy : MatcherPolicy, IEndpointComparerPo
         _ = httpContext ?? throw new ArgumentNullException(nameof(httpContext));
         _ = candidates ?? throw new ArgumentNullException(nameof(candidates));
 
+        var serviceProvider = httpContext.RequestServices;
+        var domainApps = serviceProvider.GetService<IOptions<DomainApps>>().Value;
+
         var headers = httpContext.Request.Headers;
+        var host = httpContext.Request.Host;
 
         for (var i = 0; i < candidates.Count; i++)
         {

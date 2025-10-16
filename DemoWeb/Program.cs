@@ -1,8 +1,9 @@
 ﻿using DemoWeb.Services;
 using DemoWeb.Services.DomainEndpoints;
+using DemoWeb.Services.SupportedLocals;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection.PortableExecutable;
-using DemoWeb.Services.SupportedLocals;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ builder.Services.AddScoped<StaticSiteGenerator>();
 
 builder.Services.TryAddSingleton<DomainAppEndpointDataSource>(); // Mvc默认的DefaultEndpointDataSource是单例的
 builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<MatcherPolicy, DomainAppEndpointMatcherPolicy>());
+builder.Services.Configure<DomainApps>(builder.Configuration.GetSection("DomainApps"));
 
 builder.Services.AddScoped<PageCacheService>();
 builder.Services.Configure<RouteOptions>(options =>
@@ -44,6 +46,6 @@ app.MapAppleAppEndpoints();
 //("CatchAll", "{**catchall}", new { controller = "Error", action = "CatchAll" });
 app.MapControllerRoute(
     name: "default",
-    pattern: "/{lang:SupportedLocals=en}/{controller=Home}/{action=Index}/{id?}");
+    pattern: "/{controller=Home}/{action=Index}/{id?}");
 app.MapFallbackToController("Fallback", "Error");
 app.Run();

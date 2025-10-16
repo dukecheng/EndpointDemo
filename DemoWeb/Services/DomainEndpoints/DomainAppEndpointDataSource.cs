@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
@@ -17,11 +18,13 @@ public class DomainAppEndpointDataSource : EndpointDataSource
     //public DomainAppEndpointConventionBuilder DefaultBuilder { get; }//ControllerActionEndpointConventionBuilder
 
     private CancellationTokenSource _endpointsChangeSource = new();
+    private DomainApps _domainApps;
     private IChangeToken _endpointsChangeToken;
     public override IChangeToken GetChangeToken() => Volatile.Read(ref _endpointsChangeToken);
 
-    public DomainAppEndpointDataSource()
+    public DomainAppEndpointDataSource(IOptions<DomainApps> domainAppsOption)
     {
+        _domainApps = domainAppsOption.Value;
         _endpointsChangeToken = new CancellationChangeToken(_endpointsChangeSource.Token);
         //_conventions = new List<Action<EndpointBuilder>>();
         //DefaultBuilder = new DomainAppEndpointConventionBuilder(_conventions);
@@ -59,7 +62,7 @@ public class DomainAppEndpointDataSource : EndpointDataSource
             if (endpoint is null)
             {
                 //endpoint = _managedApiEndpointFactory.CreateManagedApiEndpoint($"managedapi-{existingRoute.Value.RouteId}", 0, _conventions);
-                endpoint = CreateEndpoint(existingRoute.Value.RoutePattern, 0, null, RequestProcessPipeline);
+                endpoint = CreateEndpoint(existingRoute.Value, 0, null, RequestProcessPipeline);
                 existingRoute.Value.CachedEndpoint = endpoint;
             }
 
@@ -69,20 +72,20 @@ public class DomainAppEndpointDataSource : EndpointDataSource
         UpdateEndpoints(endpoints);
 
 
-        Endpoint CreateEndpoint(string routePattern, int order, IList<Action<EndpointBuilder>>? conventions,
+        Endpoint CreateEndpoint(RouteState routeState, int order, IList<Action<EndpointBuilder>>? conventions,
             RequestDelegate? requestPipeline)
         {
             // conventions的作用是针对EndpointBuilder进行一些定制化的操作, 以达到所有的Endpoint都具有某些共性
             var builder = new RouteEndpointBuilder(
                 requestDelegate: requestPipeline ??
                                  throw new InvalidOperationException("The pipeline hasn't been provided yet."),
-                RoutePatternFactory.Parse(routePattern),
+                RoutePatternFactory.Parse(routeState.RoutePattern),
                 order)
             {
-                DisplayName = routePattern
+                DisplayName = routeState.RoutePattern
             };
 
-            builder.Metadata.Add(new EndpointPointMatcherMetadata());
+            builder.Metadata.Add(new EndpointPointMatcherMetadata() { Host = routeState.Host });
             if (conventions is not null)
             {
                 foreach (var convention in conventions)
@@ -152,8 +155,12 @@ public class DomainAppEndpointDataSource : EndpointDataSource
              */
 
             await Task.CompletedTask;
-            _routesStates.TryAdd("DomainAppResource", new RouteState { RoutePattern = "/{lang:SupportedLocals}/resource/{level1Category}/{*slug}" });
-            _routesStates.TryAdd("DomainAppDefault", new RouteState { RoutePattern = "/{lang:SupportedLocals}/{controller=Home}/{action=Index}" });
+            foreach (var item in _domainApps)
+            {
+                _routesStates.TryAdd("DomainAppResource", new RouteState { Host = item.Host, RoutePattern = "/{lang:SupportedLocals}/resource/{level1Category}/{*slug}" });
+                _routesStates.TryAdd("DomainAppDefault", new RouteState { Host = item.Host, RoutePattern = "/{lang:SupportedLocals}/{controller=Home}/{action=Index}" });
+            }
+
         }
         catch (Exception ex)
         {
