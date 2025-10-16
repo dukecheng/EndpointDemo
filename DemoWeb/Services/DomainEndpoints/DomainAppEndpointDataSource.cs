@@ -82,7 +82,11 @@ public class DomainAppEndpointDataSource : EndpointDataSource
                 RoutePatternFactory.Parse(routeState.RoutePattern),
                 order)
             {
-                DisplayName = $"{routeState.DomainApp.SmallerIdentifier}-{routeState.RoutePattern}"
+                DisplayName = $"{routeState.DomainApp.SmallerIdentifier}-{routeState.RoutePattern}",
+                Metadata =
+                {
+                    new NamespaceConstraint(routeState.DomainApp.SmallerIdentifier)
+                }
             };
 
             builder.Metadata.Add(new EndpointPointMatcherMetadata() { Host = routeState.Host });
@@ -225,3 +229,34 @@ public class DomainAppEndpointDataSource : EndpointDataSource
 //        }
 //    }
 //}
+public class NamespaceConstraint : IRouteConstraint
+{
+    private readonly string[] _namespaces;
+
+    public NamespaceConstraint(params string[] namespaces)
+    {
+        _namespaces = namespaces;
+    }
+
+    public bool Match(HttpContext? httpContext, IRouter? route, string routeKey, RouteValueDictionary values,
+        RouteDirection routeDirection)
+    {
+        var controller = values["controller"]?.ToString();
+        var action = values["action"]?.ToString();
+
+        foreach (var namespaceName in _namespaces)
+        {
+            var controllerType = Type.GetType($"{namespaceName}.{controller}Controller");
+            if (controllerType != null)
+            {
+                var methodInfo = controllerType.GetMethod(action);
+                if (methodInfo != null)
+                {
+                    return true; // 匹配
+                }
+            }
+        }
+
+        return false; // 不匹配
+    }
+}

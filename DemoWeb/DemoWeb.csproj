@@ -15,4 +15,7 @@
         <PackageReference Include="AgileLabs.WebApp.MailKits" Version="8.1.247" />
         <PackageReference Include="Niusys.Cms.SiteClient" Version="0.25.413.1852" />
     </ItemGroup>
+    <ItemGroup>
+      <Folder Include="Hoster\" />
+    </ItemGroup>
 </Project>

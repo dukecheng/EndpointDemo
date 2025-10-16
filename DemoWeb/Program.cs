@@ -24,10 +24,7 @@ builder.Services.Configure<RouteOptions>(options =>
 {
     options.ConstraintMap.Add("SupportedLocals", typeof(LangRouteConstraint));
 });
-builder.Services.AddRouting(options =>
-{
-    options.ConstraintMap.Add("host", typeof(HostRouteConstraint));
-});
+builder.Services.AddRouting(options => { options.ConstraintMap.Add("host", typeof(HostRouteConstraint)); });
 
 var app = builder.Build();
 
@@ -51,7 +48,8 @@ app.UseAuthorization();
 app.MapAppleAppEndpoints();
 //("CatchAll", "{**catchall}", new { controller = "Error", action = "CatchAll" });
 app.MapControllerRoute(
-    name: "default",
-    pattern: "/{controller=Home}/{action=Index}/{id?}").RequireHost(builder.Configuration.GetSection("HostingDomains")?.Get<string[]>() ?? ["localhost"]);
+        name: "default",
+        pattern: "/{controller=Home}/{action=Index}/{id?}")
+    .RequireHost(builder.Configuration.GetSection("HostingDomains")?.Get<string[]>() ?? ["localhost"]);
 app.MapFallbackToController("Fallback", "Error");
 app.Run();
