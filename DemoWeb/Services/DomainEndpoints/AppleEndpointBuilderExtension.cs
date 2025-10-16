@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Rendering;
-using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -13,6 +12,7 @@ using System.Reflection;
 using System.Text.Encodings.Web;
 
 namespace DemoWeb.Services.DomainEndpoints;
+
 public static class AppleEndpointBuilderExtension
 {
     /// <summary>
@@ -86,11 +86,13 @@ public static class AppleEndpointBuilderExtension
             await context.Response.WriteAsync("Controller or Action not specified");
             return;
         }
+
         var controllerType = FindControllerType(controllerName);
         if (controllerType != null)
         {
             // 创建 ActionDescriptor
-            MethodInfo methodInfo = controllerType.GetMethods().FirstOrDefault(m => string.Equals(m.Name, actionName, StringComparison.OrdinalIgnoreCase));
+            MethodInfo methodInfo = controllerType.GetMethods()
+                .FirstOrDefault(m => string.Equals(m.Name, actionName, StringComparison.OrdinalIgnoreCase));
             var actionDescriptor = new ControllerActionDescriptor
             {
                 // 设置控制器类型信息
@@ -138,7 +140,8 @@ public static class AppleEndpointBuilderExtension
                     var ILoggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
                     var DiagnosticListener = serviceProvider.GetRequiredService<DiagnosticListener>();
                     var options = Options.Create<RazorViewEngineOptions>(new RazorViewEngineOptions { });
-                    var viewEngine = new DomainAppRazorViewEngine(razorPageFactoryProvider, razorPageActivator, HtmlEncoder, options, ILoggerFactory, DiagnosticListener);
+                    var viewEngine = new ViewEngins.DomainAppRazorViewEngine(razorPageFactoryProvider,
+                        razorPageActivator, HtmlEncoder, options, ILoggerFactory, DiagnosticListener);
 
                     // 查找视图
                     var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);
@@ -208,24 +211,5 @@ public static class AppleEndpointBuilderExtension
 
             return null;
         }
-    }
-}
-
-public class CustomViewEngine : RazorViewEngine
-{
-    public CustomViewEngine(IRazorPageFactoryProvider pageFactory, IRazorPageActivator pageActivator,
-        HtmlEncoder htmlEncoder, IOptions<RazorViewEngineOptions> optionsAccessor, ILoggerFactory loggerFactory,
-        DiagnosticListener diagnosticListener)
-        : base(pageFactory, pageActivator, htmlEncoder, optionsAccessor,
-            loggerFactory, diagnosticListener)
-    {
-    }
-}
-
-public class DomainAppRazorViewEngine : RazorViewEngine
-{
-    public DomainAppRazorViewEngine(IRazorPageFactoryProvider pageFactory, IRazorPageActivator pageActivator, HtmlEncoder htmlEncoder, IOptions<RazorViewEngineOptions> optionsAccessor, ILoggerFactory loggerFactory, DiagnosticListener diagnosticListener)
-        : base(pageFactory, pageActivator, htmlEncoder, optionsAccessor, loggerFactory, diagnosticListener)
-    {
     }
 }
