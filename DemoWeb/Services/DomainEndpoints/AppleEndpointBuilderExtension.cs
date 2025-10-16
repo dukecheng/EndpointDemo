@@ -131,7 +131,14 @@ public static class AppleEndpointBuilderExtension
                             .GetTempData(context);
 
                     // 使用系统自带的视图查找器查找视图
-                    var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
+                    //var viewEngine = serviceProvider.GetRequiredService<IRazorViewEngine>();
+                    var razorPageFactoryProvider = serviceProvider.GetRequiredService<IRazorPageFactoryProvider>();
+                    var razorPageActivator = serviceProvider.GetRequiredService<IRazorPageActivator>();
+                    var HtmlEncoder = serviceProvider.GetRequiredService<HtmlEncoder>();
+                    var ILoggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+                    var DiagnosticListener = serviceProvider.GetRequiredService<DiagnosticListener>();
+                    var options = Options.Create<RazorViewEngineOptions>(new RazorViewEngineOptions { });
+                    var viewEngine = new DomainAppRazorViewEngine(razorPageFactoryProvider, razorPageActivator, HtmlEncoder, options, ILoggerFactory, DiagnosticListener);
 
                     // 查找视图
                     var viewEngineResult = viewEngine.FindView(actionContext, actionName, isMainPage: false);
@@ -211,6 +218,14 @@ public class CustomViewEngine : RazorViewEngine
         DiagnosticListener diagnosticListener)
         : base(pageFactory, pageActivator, htmlEncoder, optionsAccessor,
             loggerFactory, diagnosticListener)
+    {
+    }
+}
+
+public class DomainAppRazorViewEngine : RazorViewEngine
+{
+    public DomainAppRazorViewEngine(IRazorPageFactoryProvider pageFactory, IRazorPageActivator pageActivator, HtmlEncoder htmlEncoder, IOptions<RazorViewEngineOptions> optionsAccessor, ILoggerFactory loggerFactory, DiagnosticListener diagnosticListener)
+        : base(pageFactory, pageActivator, htmlEncoder, optionsAccessor, loggerFactory, diagnosticListener)
     {
     }
 }
